@@ -210,19 +210,40 @@ The Nsdc module runs a singleton and rootfull Samba 4 DC instance.
 - *Rootfull* because Samba needs special privileges to store ACLs in the filesystem extended attributes
 - *Singleton* because Samba services are bound to a host IP address to serve LAN clients, and 127.0.0.1
 
-Initialize the Redis DB and start the installation with:
+Initialize the Redis DB for a two DCs domain:
 
 ```
-podman run -i --network host --rm docker.io/redis:6-alpine redis-cli <<EOF
-HSET module/nsdc0/module.env EVENTS_IMAGE ghcr.io/nethserver/nsdc:latest NSDC_IMAGE ghcr.io/nethserver/nsdc:latest IPADDRESS 10.133.0.5 HOSTNAME nsdc1.$(hostname -d) NBDOMAIN AD REALM AD.$(hostname -d | tr a-z A-Z) ADMINPASS Nethesis,1234
-PUBLISH $(hostname -s):module-rootfull.init nsdc0
+REALM=AD.DP.NETHSERVER.NET
+HOSTNAME1=nsdc1.${REALM,,}
+HOSTNAME1=nsdc2.${REALM,,}
+cat >/dev/tcp/127.0.0.1/6379 <<EOF
+HSET module/nsdc0/module.env EVENTS_IMAGE ghcr.io/nethserver/nsdc:latest NSDC_IMAGE ghcr.io/nethserver/nsdc:latest IPADDRESS 10.133.0.5 HOSTNAME ${HOSTNAME1} NBDOMAIN AD REALM ${REALM^^} ADMINUSER administrator ADMINPASS Nethesis,1234 NSDC_ARGS "new-domain"
+HSET module/nsdc1/module.env EVENTS_IMAGE ghcr.io/nethserver/nsdc:latest NSDC_IMAGE ghcr.io/nethserver/nsdc:latest IPADDRESS 10.131.0.3 HOSTNAME ${HOSTNAME2} NBDOMAIN AD REALM ${REALM^^} ADMINUSER administrator ADMINPASS Nethesis,1234 NSDC_ARGS "join-domain"
 EOF
 ```
+
+Start the new-domain provisioning on the first node:
+
+    PUBLISH nodeb:module-rootfull.init nsdc1
 
 The DC storage is persisted to the following Podman local volumes:
 
 - nsdc0-data
 - nsdc0-config
+
+Ensure each node can reach the other on the given IPADDRESS through the VPN: 
+edit `/etc/wireguard/wg0.conf` and add the other node IP address like the following:
+
+    AllowedIPs = 10.5.4.0/24,10.133.0.5/32
+
+Then restart the WireGuard interface:
+
+    systemctl restart wg-quick@wg0
+
+Once the first node is ready, start the join-domain provisioning on the second node:
+
+    PUBLISH nodeb:module-rootfull.init nsdc1
+
 
 ## Uninstall
 
