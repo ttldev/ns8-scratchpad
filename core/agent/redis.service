@@ -1,12 +1,12 @@
 [Unit]
-Description=Control plane Redis instance
+Description=Core Redis instance
 Documentation=https://github.com/DavidePrincipi/ns8-scratchpad
 
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n
 Restart=on-failure
 TimeoutStopSec=70
-EnvironmentFile=/var/lib/nethserver/redis/params.env
+EnvironmentFile=/etc/redis.env
 ExecStartPre=/bin/rm -f %t/redis.pid %t/redis.cid
 ExecStart=/usr/bin/podman run \
     --conmon-pidfile=%t/redis.pid \
@@ -19,6 +19,7 @@ ExecStart=/usr/bin/podman run \
     docker.io/redis:6-alpine \
     --save 5 1 \
     $EXTRA_PARAMS
+ExecStartPost=/usr/bin/bash -c "while ! exec 3<>/dev/tcp/127.0.0.1/6379; do sleep 1 ; done"
 ExecStop=/usr/bin/podman stop --ignore --cidfile %t/redis.cid -t 10
 ExecStopPost=/usr/bin/podman rm --ignore -f --cidfile %t/redis.cid
 PIDFile=%t/redis.pid
