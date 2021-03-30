@@ -91,7 +91,7 @@ nethserver join <master_pubkey> <master_public_address:vpn_port> <worker_vpn_ip>
 ```
 
 Where:
-- `<master_pubkey>` is the master WireGuard publick key, execute `cat /etc/wireguard/privatekey | wg pubkey` to access it
+- `<master_pubkey>` is the master WireGuard publick key, execute `wg pubkey </etc/wireguard/privatekey` to access it
 - `<master_public_address:vpn_port>` is the master public address with WireGuard listening port, something like `1.2.3.4:55820`
 - `<worker_vpn_ip>` is the VPN private IP of the worker, something like `10.5.4.2`
 
@@ -102,7 +102,7 @@ nethserver grant <worker_hostname> <worker_pubkey> <worker_vpn_ip>
 
 Where:
 - `<worker_hostname>` is the worker hostname from `hostname -s`
-- `<worker_pubkey>` is the worker WireGuard publick key, execute `cat /etc/wireguard/privatekey | wg pubkey` to access it
+- `<worker_pubkey>` is the worker WireGuard publick key, execute `wg pubkey </etc/wireguard/privatekey` to access it
 - `<worker_vpn_ip>` is the VPN worker IP set in the previous command
 
 
@@ -214,8 +214,8 @@ Initialize the Redis DB for a two DCs domain:
 
 ```
 REALM=AD.DP.NETHSERVER.NET
-HOSTNAME1=nsdc1.${REALM,,}
-HOSTNAME1=nsdc2.${REALM,,}
+HOSTNAME1=nsdc0.${REALM,,}
+HOSTNAME2=nsdc1.${REALM,,}
 cat >/dev/tcp/127.0.0.1/6379 <<EOF
 HSET module/nsdc0/module.env EVENTS_IMAGE ghcr.io/nethserver/nsdc:latest NSDC_IMAGE ghcr.io/nethserver/nsdc:latest IPADDRESS 10.133.0.5 HOSTNAME ${HOSTNAME1} NBDOMAIN AD REALM ${REALM^^} ADMINUSER administrator ADMINPASS Nethesis,1234 NSDC_ARGS "new-domain"
 HSET module/nsdc1/module.env EVENTS_IMAGE ghcr.io/nethserver/nsdc:latest NSDC_IMAGE ghcr.io/nethserver/nsdc:latest IPADDRESS 10.131.0.3 HOSTNAME ${HOSTNAME2} NBDOMAIN AD REALM ${REALM^^} ADMINUSER administrator ADMINPASS Nethesis,1234 NSDC_ARGS "join-domain"
@@ -240,7 +240,7 @@ Then restart the WireGuard interface:
 
     systemctl restart wg-quick@wg0
 
-Once the first node is ready, start the join-domain provisioning on the second node:
+Once VPNs are configured and the first node is ready, start the join-domain provisioning on the second node:
 
     PUBLISH nodeb:module-rootfull.init nsdc1
 
