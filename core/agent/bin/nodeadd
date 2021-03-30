@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+
+import redis
+import sys
+import ipcalc
+import os
+
+r = redis.Redis(host='127.0.0.1', port=6379, db=0, decode_responses=True)
+
+pubkey = sys.argv[1]
+if len(sys.argv) > 2:
+    endpoint = sys.argv[2]
+else:
+    endpoint = False
+
+if not pubkey:
+    sys.stderr.write('Missing pubkey argument\n')
+    exit(1)
+
+r.setnx('cluster/network', '10.5.4.0/24') # default value! set it before calling this script for the 1st time
+r.incr('cluster/nodecount')
+nodeid = int(r.get('cluster/nodecount'))
+if nodeid == 1: 
+    r.setnx('cluster/master', nodeid)
+
+network = r.get('cluster/network')
+ipaddr = str(ipcalc.Network(network).network() + nodeid)
+r.set(f'cluster/nodes/{nodeid}/listenport', '55820')
+r.set(f'cluster/nodes/{nodeid}/pubkey', pubkey)
+r.set(f'cluster/nodes/{nodeid}/ipaddr', ipaddr)
+if endpoint:
+    r.set(f'cluster/nodes/{nodeid}/endpoint', endpoint)
+
+pipe = r.pipeline()
+
+pipe.set(f'traefik{nodeid}', '')
+pipe.hset(f'module/traefik{nodeid}/module.env', mapping={'LE_EMAIL': 'root@localhost', 'EVENTS_IMAGE': 'ghcr.io/nethserver/traefik:latest'})
+pipe.set(f'module/traefik{nodeid}/nodeid', nodeid)
+
+pipe.hset(f'module/restic{nodeid}/module.env', mapping={'EVENTS_IMAGE': 'ghcr.io/nethserver/restic-server:latest'})
+pipe.set(f'module/restic{nodeid}/nodeid', nodeid)
+
+pipe.execute()
+
+
+if nodeid == 1:
+    #
+    # Setup the first master node of a new cluster
+    #
+    exit_code = os.spawnlp(os.P_WAIT, 'ip', 'ip', 'link', 'del', 'dev', 'wg0')
+    exit_code = os.spawnlp(os.P_WAIT, 'ip', 'ip', 'link', 'add', 'dev', 'wg0', 'type', 'wireguard')
+    assert exit_code == 0
+
+    exit_code = os.spawnlp(os.P_WAIT, 'ip', 'ip', 'address', 'add', 'dev', 'wg0', ipaddr)
+    assert exit_code == 0
+
+    exit_code = os.spawnlp(os.P_WAIT, 'wg', 'wg', 'set', 'wg0',
+        'listen-port', r.get(f'cluster/nodes/{nodeid}/listenport'),
+        'private-key', '/etc/wireguard/privatekey')
+    assert exit_code == 0
+
+    env_file = open('/etc/redis.env', 'w')
+    env_file.write(f'EXTRA_PARAMS="--bind 127.0.0.1 ::1 {ipaddr} --protected-mode no"\n')
+    env_file.close()
+
+    print('Restarting Redis...\n')
+    exit_code = os.spawnlp(os.P_WAIT, 'systemctl', 'systemctl', 'restart', 'redis')
+    assert exit_code == 0
+
+    exit_code = os.spawnlp(os.P_WAIT, 'ip', 'ip', 'link', 'set', 'dev', 'wg0', 'up')
+    assert exit_code == 0
+
+    # Truncate WireGuard configuration and ensure the file exists:
+    open('/etc/wireguard/wg0.conf', 'w').close()
+
+else:
+    #
+    # Add a new node to the cluster
+    #
+    args = ['wg', 'set', 'wg0', 'peer', pubkey, 'allowed-ips', ipaddr]
+    if endpoint:
+        args.extend(['endpoint', endpoint])
+    exit_code = os.spawnvp(os.P_WAIT, 'wg', args)
+    assert exit_code == 0
+
+    master_nodeid = r.get('cluster/master')
+    master_ipaddr = r.get(f'cluster/nodes/{master_nodeid}/ipaddr')
+    master_endpoint = r.get(f'cluster/nodes/{master_nodeid}/endpoint')
+    master_pubkey = r.get(f'cluster/nodes/{master_nodeid}/pubkey')
+
+    node_ipaddr = str(ipcalc.Network(network) + nodeid)
+
+    print(f'Node {nodeid} added to the cluster!\n')
+    print(f'Complete the join procedure with the following command:\n\n')
+    print(f'    nodejoin {node_ipaddr} {master_ipaddr} {master_endpoint} {master_pubkey}\n\n')
+
+#
+# Persist WireGuard configuration
+#
+exit_code = os.spawnlp(os.P_WAIT, 'wg-quick', 'wg-quick', 'save', 'wg0')
+assert exit_code == 0
+

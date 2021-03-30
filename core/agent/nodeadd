@@ -1,0 +1,5 @@
+#!/bin/bash
+
+source /usr/local/share/agent/bin/activate
+
+exec nodeadd "${@}"

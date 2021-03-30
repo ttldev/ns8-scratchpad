@@ -54,6 +54,8 @@ cp -f ${AGENT_DIR}/module-init@.service    /etc/systemd/system/module-init@.serv
 cp -f ${AGENT_DIR}/module-agent.service    /etc/systemd/user/module-agent.service
 cp -f ${AGENT_DIR}/module-init.service     /etc/systemd/user/module-init.service
 cp -f ${AGENT_DIR}/nethserver              /usr/local/bin/nethserver
+cp -f ${AGENT_DIR}/nodeadd                 /usr/local/sbin/nodeadd
+cp -f ${AGENT_DIR}/nodejoin                /usr/local/sbin/nodejoin
 
 chmod a+x /usr/local/bin/nethserver
 
@@ -67,7 +69,7 @@ install -m 600 -T ~/.ssh/id_rsa.pub /usr/local/share/module.skel/.ssh/authorized
 
 echo "Setup agent:"
 python3 -mvenv ${AGENT_DIR}
-${AGENT_DIR}/bin/pip3 install redis
+${AGENT_DIR}/bin/pip3 install redis ipcalc six
 
 echo "NODE_PREFIX=$(hostname -s)" > /usr/local/etc/node-agent.env
 
@@ -75,3 +77,25 @@ echo "Setup registry:"
 if [[ ! -f /usr/local/etc/registry.json ]] ; then
     echo '{"auths":{}}' > /usr/local/etc/registry.json
 fi
+
+echo "Setup and start Redis:"
+echo "EXTRA_PARAMS=\"--bind 127.0.0.1 ::1 --protected-mode no\"" > /etc/redis.env
+systemctl enable --now redis.service
+
+echo "Start node-agent:"
+systemctl enable --now node-agent.service
+
+echo "Generate VPN private key"
+pubkey=$(umask 0077; wg genkey | tee /etc/wireguard/privatekey | wg pubkey)
+
+echo
+echo "Run the command below on the master node to start the join procedure:"
+echo
+echo "  nodeadd ${pubkey}"
+echo
+echo "Append the public VPN endpoint address, if available. For example:"
+echo
+echo "  nodeadd ${pubkey} my.host.fqdn:55820"
+echo
+echo "Run the command on this node to bootstrap a new cluster."
+echo

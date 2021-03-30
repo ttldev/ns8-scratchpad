@@ -15,6 +15,11 @@ find /etc/systemd/system/  \( -name module\*.service -o -name node-agent.service
 rm -rvf /usr/local/share/{redis.skel,module.skel,agent}\
     /etc/sysctl.d/80-nethserver.conf \
     /etc/systemd/user/module-agent.service /etc/systemd/user/module-init.service \
+    /etc/redis.env \
+    /etc/wireguard/privatekey \
+    /etc/wireguard/wg0.conf \
+    /usr/local/bin/nethserver \
+    /usr/local/sbin/{nodeadd,nodejoin} \
     /usr/local/etc/node-agent.env
 
 for userhome in /home/*; do
