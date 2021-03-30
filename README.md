@@ -214,8 +214,8 @@ Initialize the Redis DB for a two DCs domain:
 
 ```
 REALM=AD.DP.NETHSERVER.NET
-HOSTNAME1=nsdc0.${REALM,,}
-HOSTNAME2=nsdc1.${REALM,,}
+HOSTNAME1=dca.${REALM,,}
+HOSTNAME2=dcb.${REALM,,}
 cat >/dev/tcp/127.0.0.1/6379 <<EOF
 HSET module/nsdc0/module.env EVENTS_IMAGE ghcr.io/nethserver/nsdc:latest NSDC_IMAGE ghcr.io/nethserver/nsdc:latest IPADDRESS 10.133.0.5 HOSTNAME ${HOSTNAME1} NBDOMAIN AD REALM ${REALM^^} ADMINUSER administrator ADMINPASS Nethesis,1234 NSDC_ARGS "new-domain"
 HSET module/nsdc1/module.env EVENTS_IMAGE ghcr.io/nethserver/nsdc:latest NSDC_IMAGE ghcr.io/nethserver/nsdc:latest IPADDRESS 10.131.0.3 HOSTNAME ${HOSTNAME2} NBDOMAIN AD REALM ${REALM^^} ADMINUSER administrator ADMINPASS Nethesis,1234 NSDC_ARGS "join-domain"
@@ -224,7 +224,7 @@ EOF
 
 Start the new-domain provisioning on the first node:
 
-    PUBLISH nodeb:module-rootfull.init nsdc1
+    PUBLISH firstnode:module-rootfull.init nsdc0
 
 The DC storage is persisted to the following Podman local volumes:
 
