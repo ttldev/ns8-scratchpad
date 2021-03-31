@@ -97,5 +97,6 @@ echo "Append the public VPN endpoint address, if available. For example:"
 echo
 echo "  nodeadd ${pubkey} my.host.fqdn:55820"
 echo
-echo "Run the command on this node to bootstrap a new cluster."
+echo "To bootstrap a new cluster run the nodeadd command on this node."
+echo "The endpoint argument is mandatory."
 echo

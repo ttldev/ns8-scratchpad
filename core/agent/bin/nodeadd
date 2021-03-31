@@ -5,7 +5,6 @@ import sys
 import ipcalc
 import os
 
-r = redis.Redis(host='127.0.0.1', port=6379, db=0, decode_responses=True)
 
 pubkey = sys.argv[1]
 if len(sys.argv) > 2:
@@ -17,6 +16,8 @@ if not pubkey:
     sys.stderr.write('Missing pubkey argument\n')
     exit(1)
 
+r = redis.Redis(host='127.0.0.1', port=6379, db=0, decode_responses=True)
+
 r.setnx('cluster/network', '10.5.4.0/24') # default value! set it before calling this script for the 1st time
 r.incr('cluster/nodecount')
 nodeid = int(r.get('cluster/nodecount'))
@@ -25,7 +26,7 @@ if nodeid == 1:
 
 network = r.get('cluster/network')
 ipaddr = str(ipcalc.Network(network).network() + nodeid)
-r.set(f'cluster/nodes/{nodeid}/listenport', '55820')
+r.setnx(f'cluster/nodes/{nodeid}/listenport', '55820')
 r.set(f'cluster/nodes/{nodeid}/pubkey', pubkey)
 r.set(f'cluster/nodes/{nodeid}/ipaddr', ipaddr)
 if endpoint:
@@ -47,40 +48,43 @@ if nodeid == 1:
     #
     # Setup the first master node of a new cluster
     #
-    exit_code = os.spawnlp(os.P_WAIT, 'ip', 'ip', 'link', 'del', 'dev', 'wg0')
-    exit_code = os.spawnlp(os.P_WAIT, 'ip', 'ip', 'link', 'add', 'dev', 'wg0', 'type', 'wireguard')
+    with open('/etc/wireguard/privatekey') as pkh:
+        master_privatekey = pkh.read().strip()
+
+    # Truncate WireGuard configuration and ensure the file exists:
+    with open('/etc/wireguard/wg0.conf', 'w') as wgconf:
+        wgconf.write(f"[Interface]\n")
+        wgconf.write(f"Address = {ipaddr}\n")
+        wgconf.write(f"ListenPort = {r.get(f'cluster/nodes/{nodeid}/listenport')}\n")
+        wgconf.write(f"PrivateKey = {master_privatekey}\n\n")
+
+    print('Enable and start WireGuard wg0 interface...\n')
+    exit_code = os.spawnlp(os.P_WAIT, 'systemctl', 'systemctl', 'enable', 'wg-quick@wg0')
+    assert exit_code == 0
+    exit_code = os.spawnlp(os.P_WAIT, 'systemctl', 'systemctl', 'restart', 'wg-quick@wg0')
     assert exit_code == 0
 
-    exit_code = os.spawnlp(os.P_WAIT, 'ip', 'ip', 'address', 'add', 'dev', 'wg0', ipaddr)
-    assert exit_code == 0
-
-    exit_code = os.spawnlp(os.P_WAIT, 'wg', 'wg', 'set', 'wg0',
-        'listen-port', r.get(f'cluster/nodes/{nodeid}/listenport'),
-        'private-key', '/etc/wireguard/privatekey')
-    assert exit_code == 0
-
-    env_file = open('/etc/redis.env', 'w')
-    env_file.write(f'EXTRA_PARAMS="--bind 127.0.0.1 ::1 {ipaddr} --protected-mode no"\n')
-    env_file.close()
+    with open('/etc/redis.env', 'w') as env_file:
+        env_file.write(f'EXTRA_PARAMS="--bind 127.0.0.1 ::1 {ipaddr} --protected-mode no"\n')
 
     print('Restarting Redis...\n')
     exit_code = os.spawnlp(os.P_WAIT, 'systemctl', 'systemctl', 'restart', 'redis')
     assert exit_code == 0
 
-    exit_code = os.spawnlp(os.P_WAIT, 'ip', 'ip', 'link', 'set', 'dev', 'wg0', 'up')
-    assert exit_code == 0
-
-    # Truncate WireGuard configuration and ensure the file exists:
-    open('/etc/wireguard/wg0.conf', 'w').close()
 
 else:
     #
     # Add a new node to the cluster
     #
-    args = ['wg', 'set', 'wg0', 'peer', pubkey, 'allowed-ips', ipaddr]
-    if endpoint:
-        args.extend(['endpoint', endpoint])
-    exit_code = os.spawnvp(os.P_WAIT, 'wg', args)
+    with open('/etc/wireguard/wg0.conf', 'a') as wgconf:
+        wgconf.write(f'[Peer]\n')
+        wgconf.write(f'PublicKey = {pubkey}\n')
+        wgconf.write(f'AllowedIPs = {ipaddr}\n')
+        if endpoint:
+            wgconf.write(f'Endpoint = {endpoint}\n')
+
+    print('Restarting WireGuard wg0 interface...\n')
+    exit_code = os.spawnlp(os.P_WAIT, 'systemctl', 'systemctl', 'restart', 'wg-quick@wg0')
     assert exit_code == 0
 
     master_nodeid = r.get('cluster/master')
@@ -93,10 +97,3 @@ else:
     print(f'Node {nodeid} added to the cluster!\n')
     print(f'Complete the join procedure with the following command:\n\n')
     print(f'    nodejoin {node_ipaddr} {master_ipaddr} {master_endpoint} {master_pubkey}\n\n')
-
-#
-# Persist WireGuard configuration
-#
-exit_code = os.spawnlp(os.P_WAIT, 'wg-quick', 'wg-quick', 'save', 'wg0')
-assert exit_code == 0
-

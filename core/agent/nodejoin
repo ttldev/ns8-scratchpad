@@ -9,21 +9,28 @@ master_ipaddr=${2:?missing master ipaddr argument}
 master_endpoint=${3:?missing master endpoint argument}
 master_pubkey=${4:?missing master pubkey argument}
 
+privatekey=$(< /etc/wireguard/privatekey)
+
 eval $(ipcalc -np ${node_ipaddr})
 
-ip link del dev wg0 || :
-ip link add dev wg0 type wireguard
-ip addr add dev wg0 ${node_ipaddr}
-wg set wg0 private-key /etc/wireguard/privatekey \
-    peer ${master_pubkey} \
-    allowed-ips ${NETWORK}/${PREFIX} \
-    endpoint ${master_endpoint}
+(umask 077; cat >/etc/wireguard/wg0.conf) <<EOF
+[Interface]
+ListenPort = 55820
+Address = ${node_ipaddr}
+PrivateKey = ${privatekey}
+
+[Peer]
+PublicKey = ${master_pubkey}
+AllowedIPs = ${NETWORK}/${PREFIX}
+Endpoint = ${master_endpoint}
+
+EOF
+
+systemctl enable wg-quick@wg0
+systemctl restart wg-quick@wg0
 
 cat >/etc/redis.env <<EOF
 EXTRA_PARAMS="--bind 127.0.0.1 ::1 --replicaof ${master_ipaddr} 6379"
 EOF
-
-> /etc/wireguard/wg0.conf
-wg-quick save wg0
 
 systemctl restart redis
