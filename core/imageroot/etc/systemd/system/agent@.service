@@ -1,0 +1,19 @@
+[Unit]
+Description=Rootfull %I agent
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/nethserver/agent.env
+EnvironmentFile=/etc/nethserver/%i.env
+Environment=INSTALL_ROOT=/var/lib/nethserver/%i/root
+ExecStartPre=/usr/bin/mkdir -p $INSTALL_ROOT/actions
+WorkingDirectory=$INSTALL_ROOT
+ExecStart=/usr/local/bin/agent %I $INSTALL_ROOT/actions /var/lib/nethserver/%i/actions-custom
+TimeoutStartSec=300
+StartLimitInterval=60
+StartLimitBurst=12
+RestartSec=5
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

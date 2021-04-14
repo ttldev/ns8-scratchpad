@@ -1,12 +1,13 @@
 [Unit]
-Description=Control plane Redis instance
-Documentation=https://github.com/DavidePrincipi/ns8-scratchpad
+Description=Redis DB
+Documentation=https://github.com/NethServer/ns8-scratchpad
 
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n
 Restart=on-failure
 TimeoutStopSec=70
-EnvironmentFile=/var/lib/nethserver/redis/params.env
+Environment=EXTRA_PARAMS=--bind 127.0.0.1 ::1 --protected-mode no
+EnvironmentFile=/etc/nethserver/redis.env
 ExecStartPre=/bin/rm -f %t/redis.pid %t/redis.cid
 ExecStart=/usr/bin/podman run \
     --conmon-pidfile=%t/redis.pid \
